@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Heart, MessageCircle, Edit2, Trash2, Send } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { API_BASE_URL } from "../../config";
@@ -9,6 +9,30 @@ export default function PostCard({ post, onUpdate }) {
   const [editText, setEditText] = useState(post.text);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
+
+  // Track all video elements
+  const videoRefs = useRef([]);
+
+  useEffect(() => {
+    if (!videoRefs.current.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const video = entry.target;
+          if (video.paused && entry.isIntersecting) {
+            video.play().catch(() => {});
+          } else if (!video.paused && !entry.isIntersecting) {
+            video.pause();
+          }
+        });
+      },
+      { threshold: 0.6 } // 60% visible before playing
+    );
+
+    videoRefs.current.forEach((v) => v && observer.observe(v));
+    return () => observer.disconnect();
+  }, [post.media]);
 
   const isOwner =
     user?.id === post.author?._id || user?._id === post.author?._id;
@@ -48,7 +72,6 @@ export default function PostCard({ post, onUpdate }) {
 
   const handleDelete = async () => {
     if (!window.confirm("Are you sure you want to delete this post?")) return;
-
     try {
       await fetch(`${API_BASE_URL}/api/posts/${post._id}`, {
         method: "DELETE",
@@ -63,7 +86,6 @@ export default function PostCard({ post, onUpdate }) {
   const handleComment = async (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-
     try {
       await fetch(`${API_BASE_URL}/api/posts/${post._id}/comment`, {
         method: "POST",
@@ -153,27 +175,35 @@ export default function PostCard({ post, onUpdate }) {
         )}
 
         {/* Post Media */}
-               {post.media && post.media.length > 0 && (
-    <div className={`mb-3 grid gap-2 ${post.media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {post.media.map((m, i) => (
-            m.type === 'image' ? (
-                <img 
-                    key={i} 
-                    src={`${API_BASE_URL}${m.url}`} 
-                    alt="Post media" 
-                    className="rounded-lg w-full h-auto object-cover max-h-96" 
-                /> 
-            ) : ( 
-                <video 
-                    key={i} 
-                    src={`${API_BASE_URL}${m.url}`} 
-                    controls 
-                    className="rounded-lg w-full" 
+        {post.media && post.media.length > 0 && (
+          <div
+            className={`mb-3 grid gap-2 ${
+              post.media.length === 1 ? "grid-cols-1" : "grid-cols-2"
+            }`}
+          >
+            {post.media.map((m, i) =>
+              m.type === "image" ? (
+                <img
+                  key={i}
+                  src={`${API_BASE_URL}${m.url}`}
+                  alt="Post media"
+                  className="rounded-lg w-full h-auto object-cover max-h-96"
                 />
-            )
-        ))}
-    </div>
-)}
+              ) : (
+                <video
+                  key={i}
+                  src={`${API_BASE_URL}${m.url}`}
+                  controls
+                  muted
+                  playsInline
+                  ref={(el) => (videoRefs.current[i] = el)}
+                  className="rounded-lg w-full max-h-96 object-contain"
+                />
+              )
+            )}
+          </div>
+        )}
+
         {/* Post Actions */}
         <div className="flex items-center gap-6 pt-3 border-t border-gray-200">
           <button
