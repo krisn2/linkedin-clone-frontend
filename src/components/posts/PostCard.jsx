@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-import { Heart, MessageCircle, Edit2, Trash2, Send } from "lucide-react";
+import {
+  Heart,
+  MessageCircle,
+  Edit2,
+  Trash2,
+  Send,
+  MessageSquare,
+} from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { API_BASE_URL } from "../../config";
+import ChatWindow from "../chat/ChatWindow";
 
 export default function PostCard({ post, onUpdate }) {
   const { user, token } = useAuth();
@@ -9,8 +17,8 @@ export default function PostCard({ post, onUpdate }) {
   const [editText, setEditText] = useState(post.text);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [showChat, setShowChat] = useState(false);
 
-  // Track all video elements
   const videoRefs = useRef([]);
 
   useEffect(() => {
@@ -103,7 +111,7 @@ export default function PostCard({ post, onUpdate }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow mb-4">
+    <div className="bg-white rounded-lg shadow mb-4 relative">
       <div className="p-4">
         {/* Post Header */}
         <div className="flex items-start justify-between mb-3">
@@ -125,6 +133,7 @@ export default function PostCard({ post, onUpdate }) {
             </div>
           </div>
 
+          {/* Edit/Delete for Owner */}
           {isOwner && (
             <div className="flex gap-2">
               <button
@@ -134,7 +143,7 @@ export default function PostCard({ post, onUpdate }) {
                 <Edit2 size={18} />
               </button>
               <button
-                onClick={handleDelete}
+                onClick={() => handleDelete(post._id)}
                 className="text-gray-500 hover:text-red-600 transition p-1"
               >
                 <Trash2 size={18} />
@@ -154,7 +163,7 @@ export default function PostCard({ post, onUpdate }) {
             />
             <div className="flex gap-2 mt-2">
               <button
-                onClick={handleUpdate}
+                onClick={() => handleUpdate(post._id)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
                 Save
@@ -175,7 +184,7 @@ export default function PostCard({ post, onUpdate }) {
         )}
 
         {/* Post Media */}
-        {post.media && post.media.length > 0 && (
+        {post.media?.length > 0 && (
           <div
             className={`mb-3 grid gap-2 ${
               post.media.length === 1 ? "grid-cols-1" : "grid-cols-2"
@@ -185,19 +194,16 @@ export default function PostCard({ post, onUpdate }) {
               m.type === "image" ? (
                 <img
                   key={i}
-                  src={`${API_BASE_URL}${m.url}`}
-                  alt="Post media"
-                  className="rounded-lg w-full h-auto object-cover max-h-96"
+                  src={`${API_BASE_URL}/${m.url}`}
+                  alt=""
+                  className="rounded-lg w-full object-cover max-h-96"
                 />
               ) : (
                 <video
                   key={i}
-                  src={`${API_BASE_URL}${m.url}`}
+                  src={`${API_BASE_URL}/${m.url}`}
                   controls
-                  muted
-                  playsInline
-                  ref={(el) => (videoRefs.current[i] = el)}
-                  className="rounded-lg w-full max-h-96 object-contain"
+                  className="rounded-lg w-full"
                 />
               )
             )}
@@ -209,10 +215,12 @@ export default function PostCard({ post, onUpdate }) {
           <button
             onClick={handleLike}
             className={`flex items-center gap-2 transition ${
-              isLiked ? "text-red-600" : "text-gray-600 hover:text-red-600"
+              post.likes.includes(user?._id)
+                ? "text-red-600"
+                : "text-gray-600 hover:text-red-600"
             }`}
           >
-            <Heart size={20} fill={isLiked ? "currentColor" : "none"} />
+            <Heart size={20} />
             <span className="font-medium">{post.likes?.length || 0}</span>
           </button>
 
@@ -223,10 +231,27 @@ export default function PostCard({ post, onUpdate }) {
             <MessageCircle size={20} />
             <span className="font-medium">{post.comments?.length || 0}</span>
           </button>
+
+          {/* ✅ New “Message” button */}
+          {!isOwner && (
+            <button
+              onClick={() => setShowChat(true)}
+              title="Message user"
+              className="relative group p-1 rounded-full hover:bg-green-50 transition"
+            >
+              <MessageSquare
+                size={20}
+                className="text-gray-600 group-hover:text-green-600"
+              />
+              <span className="absolute opacity-0 group-hover:opacity-100 transition bg-gray-800 text-white text-xs rounded py-1 px-2 -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                Message
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Comments Section */}
+      {/* Comments */}
       {showComments && (
         <div className="border-t border-gray-200 p-4 bg-gray-50">
           <form onSubmit={handleComment} className="flex gap-2 mb-4">
@@ -235,7 +260,7 @@ export default function PostCard({ post, onUpdate }) {
               placeholder="Write a comment..."
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 outline-none"
             />
             <button
               type="submit"
@@ -248,12 +273,12 @@ export default function PostCard({ post, onUpdate }) {
           <div className="space-y-3">
             {post.comments?.map((c, i) => (
               <div key={i} className="flex gap-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-                  {c.author?.name?.[0]?.toUpperCase() || "U"}
+                <div className="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                  {c.user?.name?.[0]?.toUpperCase() || "U"}
                 </div>
                 <div className="flex-1 bg-white p-3 rounded-lg">
                   <p className="font-semibold text-sm text-gray-900">
-                    {c.author?.name || "Unknown"}
+                    {c.user?.name || "Unknown"}
                   </p>
                   <p className="text-sm text-gray-700 mt-1">{c.text}</p>
                 </div>
@@ -261,6 +286,10 @@ export default function PostCard({ post, onUpdate }) {
             ))}
           </div>
         </div>
+      )}
+
+      {showChat && (
+        <ChatWindow receiver={post.author} onClose={() => setShowChat(false)} />
       )}
     </div>
   );
