@@ -4,17 +4,39 @@ import { useAuth } from "./useAuth";
 import { API_BASE_URL } from "../config";
 
 export const useSocket = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const socketRef = useRef(null);
 
   useEffect(() => {
-    if (user) {
-      const socket = io(API_BASE_URL);
-      socket.emit("register", user._id);
-      socketRef.current = socket;
-      return () => socket.disconnect();
+    if (!user || !token) {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
     }
-  }, [user]);
+
+    const socket = io(API_BASE_URL, {
+      auth: { token },
+      transports: ["websocket", "polling"],
+      autoConnect: true,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log('socket connected', socket.id);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.warn("Socket connect error", err.message || err);
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [user, token]);
 
   return socketRef.current;
 };

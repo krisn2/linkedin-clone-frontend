@@ -1,10 +1,11 @@
-import { Home, User, LogOut, MessageSquare } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
-import { useSocket } from '../../hooks/useSocket';
-import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import ChatWindow from '../chat/ChatWindow';
-import { API_BASE_URL } from '../../config';
+// src/components/layout/Header.jsx
+import { Home, User, LogOut, MessageSquare } from "lucide-react";
+import { useAuth } from "../../hooks/useAuth";
+import { useSocket } from "../../hooks/useSocket";
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
+import ChatWindow from "../chat/ChatWindow";
+import { API_BASE_URL } from "../../config";
 
 export default function Header() {
   const { user, logout, token } = useAuth();
@@ -14,24 +15,48 @@ export default function Header() {
   const [showChatList, setShowChatList] = useState(false);
   const [activeReceiver, setActiveReceiver] = useState(null);
   const [conversations, setConversations] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0); 
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [onlineSet, setOnlineSet] = useState(new Set());
 
   useEffect(() => {
     if (token) fetchConversations();
   }, [token]);
 
-  // Socket event listener for new messages
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('receiveMessage', (msg) => {
-      // Increment unread count & show alert
+    const handleReceive = (msg) => {
       setUnreadCount((prev) => prev + 1);
-      alert(`💬 New message from ${msg.sender?.name || 'someone'}`);
       fetchConversations();
-    });
+    };
 
-    return () => socket.off('receiveMessage');
+    const handleOnlineUsers = (list) => {
+      setOnlineSet(new Set(list.map(String)));
+    };
+
+    const handleUserOnline = ({ userId }) => {
+      setOnlineSet((prev) => new Set(prev).add(String(userId)));
+    };
+
+    const handleUserOffline = ({ userId }) => {
+      setOnlineSet((prev) => {
+        const next = new Set(prev);
+        next.delete(String(userId));
+        return next;
+      });
+    };
+
+    socket.on("receiveMessage", handleReceive);
+    socket.on("onlineUsers", handleOnlineUsers);
+    socket.on("userOnline", handleUserOnline);
+    socket.on("userOffline", handleUserOffline);
+
+    return () => {
+      socket.off("receiveMessage", handleReceive);
+      socket.off("onlineUsers", handleOnlineUsers);
+      socket.off("userOnline", handleUserOnline);
+      socket.off("userOffline", handleUserOffline);
+    };
   }, [socket]);
 
   const fetchConversations = async () => {
@@ -40,33 +65,37 @@ export default function Header() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setConversations(data);
+      setConversations(data || []);
+      // mark online entries that likely are online (if you want initial presence)
+      // NOTE: server only emits presence changes when users connect; this set will populate as events arrive.
     } catch (err) {
-      console.error('Error fetching conversations:', err);
+      console.error("Error fetching conversations:", err);
     }
   };
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-        <Link to="/" className="text-xl font-bold text-blue-600">SocialApp</Link>
+        <Link to="/" className="text-xl font-bold text-blue-600">
+          SocialApp
+        </Link>
 
         <nav className="flex items-center gap-8 relative">
-          {/* Home */}
           <Link
             to="/"
             className={`flex flex-col items-center gap-1 transition ${
-              location.pathname === '/' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+              location.pathname === "/"
+                ? "text-blue-600"
+                : "text-gray-600 hover:text-gray-900"
             }`}
           >
             <Home size={20} />
           </Link>
 
-          {/* Message icon with badge */}
           <button
             onClick={() => {
               setShowChatList(!showChatList);
-              setUnreadCount(0); // reset when opened
+              setUnreadCount(0);
             }}
             className="relative flex items-center justify-center text-gray-600 hover:text-blue-600 transition"
             title="Messages"
@@ -79,17 +108,17 @@ export default function Header() {
             )}
           </button>
 
-          {/* Profile */}
           <Link
             to="/profile"
             className={`flex flex-col items-center gap-1 transition ${
-              location.pathname === '/profile' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+              location.pathname === "/profile"
+                ? "text-blue-600"
+                : "text-gray-600 hover:text-gray-900"
             }`}
           >
             <User size={20} />
           </Link>
 
-          {/* Logout */}
           <button
             onClick={logout}
             className="flex flex-col items-center gap-1 text-gray-600 hover:text-red-600 transition"
@@ -105,7 +134,9 @@ export default function Header() {
           <h3 className="font-semibold p-3 border-b text-gray-800">Messages</h3>
           <ul>
             {conversations.length === 0 ? (
-              <li className="p-3 text-gray-500 text-sm">No conversations yet</li>
+              <li className="p-3 text-gray-500 text-sm">
+                No conversations yet
+              </li>
             ) : (
               conversations.map((c) =>
                 c.participants
@@ -113,10 +144,40 @@ export default function Header() {
                   .map((other) => (
                     <li
                       key={other._id}
-                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                      onClick={() => setActiveReceiver(other)}
+                      className="px-3 py-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                      onClick={() => {
+                        setActiveReceiver(other);
+                        setShowChatList(false);
+                      }}
                     >
-                      {other.name}
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-semibold">
+                          {other.name?.[0]?.toUpperCase() || "U"}
+                        </div>
+                        <div className="text-sm">
+                          <div className="font-medium text-gray-900">
+                            {other.name}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {other.email}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* online dot */}
+                      <div>
+                        {onlineSet.has(String(other._id)) ? (
+                          <span
+                            className="block w-3 h-3 rounded-full bg-green-400"
+                            title="Online"
+                          />
+                        ) : (
+                          <span
+                            className="block w-3 h-3 rounded-full bg-gray-300"
+                            title="Offline"
+                          />
+                        )}
+                      </div>
                     </li>
                   ))
               )
