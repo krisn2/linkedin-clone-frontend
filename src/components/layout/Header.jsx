@@ -1,4 +1,3 @@
-// src/components/layout/Header.jsx
 import { Home, User, LogOut, MessageSquare } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import { useSocket } from "../../hooks/useSocket";
@@ -6,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ChatWindow from "../chat/ChatWindow";
 import { API_BASE_URL } from "../../config";
+import toast from "react-hot-toast";
 
 export default function Header() {
   const { user, logout, token } = useAuth();
@@ -15,7 +15,7 @@ export default function Header() {
   const [showChatList, setShowChatList] = useState(false);
   const [activeReceiver, setActiveReceiver] = useState(null);
   const [conversations, setConversations] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState({});
   const [onlineSet, setOnlineSet] = useState(new Set());
 
   useEffect(() => {
@@ -26,25 +26,46 @@ export default function Header() {
     if (!socket) return;
 
     const handleReceive = (msg) => {
-      setUnreadCount((prev) => prev + 1);
+      const senderId = msg.sender?._id || msg.sender;
+      setUnreadMessages((prev) => ({
+        ...prev,
+        [senderId]: (prev[senderId] || 0) + 1,
+      }));
       fetchConversations();
+
+      // Toast only if user not chatting
+      if (!location.pathname.includes("/chat")) {
+        toast.custom((t) => (
+          <div
+            className={`bg-white border shadow-lg rounded-lg p-3 flex items-center gap-3 transition-all duration-300 ${
+              t.visible ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
+              {msg.sender?.name?.[0]?.toUpperCase() || "U"}
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">{msg.sender?.name}</p>
+              <p className="text-sm text-gray-600 line-clamp-1">{msg.text}</p>
+            </div>
+          </div>
+        ));
+      }
     };
 
     const handleOnlineUsers = (list) => {
       setOnlineSet(new Set(list.map(String)));
     };
 
-    const handleUserOnline = ({ userId }) => {
+    const handleUserOnline = ({ userId }) =>
       setOnlineSet((prev) => new Set(prev).add(String(userId)));
-    };
 
-    const handleUserOffline = ({ userId }) => {
+    const handleUserOffline = ({ userId }) =>
       setOnlineSet((prev) => {
         const next = new Set(prev);
         next.delete(String(userId));
         return next;
       });
-    };
 
     socket.on("receiveMessage", handleReceive);
     socket.on("onlineUsers", handleOnlineUsers);
@@ -66,12 +87,15 @@ export default function Header() {
       });
       const data = await res.json();
       setConversations(data || []);
-      // mark online entries that likely are online (if you want initial presence)
-      // NOTE: server only emits presence changes when users connect; this set will populate as events arrive.
     } catch (err) {
       console.error("Error fetching conversations:", err);
     }
   };
+
+  const totalUnread = Object.values(unreadMessages).reduce(
+    (a, b) => a + b,
+    0
+  );
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
@@ -83,7 +107,7 @@ export default function Header() {
         <nav className="flex items-center gap-8 relative">
           <Link
             to="/"
-            className={`flex flex-col items-center gap-1 transition ${
+            className={`flex flex-col items-center ${
               location.pathname === "/"
                 ? "text-blue-600"
                 : "text-gray-600 hover:text-gray-900"
@@ -93,24 +117,21 @@ export default function Header() {
           </Link>
 
           <button
-            onClick={() => {
-              setShowChatList(!showChatList);
-              setUnreadCount(0);
-            }}
-            className="relative flex items-center justify-center text-gray-600 hover:text-blue-600 transition"
+            onClick={() => setShowChatList((v) => !v)}
+            className="relative text-gray-600 hover:text-blue-600 transition"
             title="Messages"
           >
             <MessageSquare size={22} />
-            {unreadCount > 0 && (
+            {totalUnread > 0 && (
               <span className="absolute -top-1 -right-2 bg-red-600 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                {unreadCount}
+                {totalUnread}
               </span>
             )}
           </button>
 
           <Link
             to="/profile"
-            className={`flex flex-col items-center gap-1 transition ${
+            className={`flex flex-col items-center ${
               location.pathname === "/profile"
                 ? "text-blue-600"
                 : "text-gray-600 hover:text-gray-900"
@@ -121,7 +142,7 @@ export default function Header() {
 
           <button
             onClick={logout}
-            className="flex flex-col items-center gap-1 text-gray-600 hover:text-red-600 transition"
+            className="flex flex-col items-center text-gray-600 hover:text-red-600 transition"
           >
             <LogOut size={20} />
           </button>
@@ -131,7 +152,9 @@ export default function Header() {
       {/* Chat List Dropdown */}
       {showChatList && (
         <div className="absolute right-4 top-14 bg-white border rounded-lg shadow-lg w-64 z-50">
-          <h3 className="font-semibold p-3 border-b text-gray-800">Messages</h3>
+          <h3 className="font-semibold p-3 border-b text-gray-800">
+            Messages
+          </h3>
           <ul>
             {conversations.length === 0 ? (
               <li className="p-3 text-gray-500 text-sm">
@@ -148,11 +171,16 @@ export default function Header() {
                       onClick={() => {
                         setActiveReceiver(other);
                         setShowChatList(false);
+                        setUnreadMessages((prev) => {
+                          const copy = { ...prev };
+                          delete copy[other._id];
+                          return copy;
+                        });
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-                          {other.name?.[0]?.toUpperCase() || "U"}
+                        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
+                          {other.name?.[0]?.toUpperCase()}
                         </div>
                         <div className="text-sm">
                           <div className="font-medium text-gray-900">
@@ -164,18 +192,16 @@ export default function Header() {
                         </div>
                       </div>
 
-                      {/* online dot */}
-                      <div>
+                      <div className="flex items-center gap-1">
                         {onlineSet.has(String(other._id)) ? (
-                          <span
-                            className="block w-3 h-3 rounded-full bg-green-400"
-                            title="Online"
-                          />
+                          <span className="block w-3 h-3 rounded-full bg-green-400" />
                         ) : (
-                          <span
-                            className="block w-3 h-3 rounded-full bg-gray-300"
-                            title="Offline"
-                          />
+                          <span className="block w-3 h-3 rounded-full bg-gray-300" />
+                        )}
+                        {unreadMessages[other._id] && (
+                          <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-0.5">
+                            {unreadMessages[other._id]}
+                          </span>
                         )}
                       </div>
                     </li>

@@ -10,6 +10,7 @@ export const useSocket = () => {
   useEffect(() => {
     if (!user || !token) {
       if (socketRef.current) {
+        socketRef.current.emit("manualDisconnect");
         socketRef.current.disconnect();
         socketRef.current = null;
       }
@@ -18,23 +19,28 @@ export const useSocket = () => {
 
     const socket = io(API_BASE_URL, {
       auth: { token },
-      transports: ["websocket", "polling"],
+      transports: ["websocket"],
       autoConnect: true,
+      reconnection: true,
     });
 
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log('socket connected', socket.id);
+      console.log("✅ Connected to socket:", socket.id);
     });
 
     socket.on("connect_error", (err) => {
-      console.warn("Socket connect error", err.message || err);
+      console.warn("⚠️ Socket connect error:", err.message || err);
     });
 
+    const handleUnload = () => {
+      socket.emit("manualDisconnect");
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      window.removeEventListener("beforeunload", handleUnload);
     };
   }, [user, token]);
 

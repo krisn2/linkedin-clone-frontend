@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { useSocket } from "../../hooks/useSocket";
 import { API_BASE_URL } from "../../config";
+import toast from "react-hot-toast";
 
 export default function ChatWindow({ receiver, onClose, index = 0 }) {
   const { token, user } = useAuth();
@@ -13,29 +14,53 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const stopTypingTimerRef = useRef(null);
+  const audioRef = useRef(null);
+
+  // Load sound effect once
+  useEffect(() => {
+    audioRef.current = new Audio("/notification.mp3"); // place file in /public
+  }, []);
 
   // Fetch chat history
   useEffect(() => {
     if (receiver) fetchMessages();
   }, [receiver]);
 
-  // Scroll to bottom whenever messages update
+  // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Socket listeners
+  // Socket event listeners
   useEffect(() => {
     if (!socket) return;
 
     const handleReceive = (msg) => {
-      // show messages that belong to this receiver conversation
+      // Only show if message belongs to this chat
       if (
-        (msg.sender && (msg.sender._id === receiver._id || msg.sender === receiver._id)) ||
-        msg.receiverId === user._id ||
-        (msg.conversationId && msg.conversationId) // fallback
+        msg.sender === receiver._id ||
+        msg.sender?._id === receiver._id ||
+        msg.receiverId === user._id
       ) {
         setMessages((prev) => [...prev, msg]);
+
+        // play sound + toast
+        if (audioRef.current) audioRef.current.play().catch(() => {});
+        toast.custom((t) => (
+          <div
+            className={`bg-white border shadow-lg rounded-lg p-3 flex items-center gap-3 transition-all duration-300 ${
+              t.visible ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
+              {receiver.name?.[0]?.toUpperCase() || "U"}
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">{receiver.name}</p>
+              <p className="text-sm text-gray-600 line-clamp-1">{msg.text}</p>
+            </div>
+          </div>
+        ));
       }
     };
 
@@ -43,42 +68,48 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
       if (String(from) === String(receiver._id)) {
         setIsReceiverTyping(Boolean(typing));
         if (typing) {
-          // clear any previous OFF timer and start one to auto-clear after 3s
           if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
           stopTypingTimerRef.current = setTimeout(() => setIsReceiverTyping(false), 3000);
         }
       }
     };
 
-    const handleUserOnline = ({ userId }) => {
-      if (String(userId) === String(receiver._id)) setIsReceiverOnline(true);
-    };
 
-    const handleUserOffline = ({ userId }) => {
-      if (String(userId) === String(receiver._id)) {
-        setIsReceiverOnline(false);
-        setIsReceiverTyping(false);
-      }
-    };
+    const handleUserOnline = ({ userId }) => {
+  if (String(userId) === String(receiver._id)) setIsReceiverOnline(true);
+};
+
+const handleUserOffline = ({ userId }) => {
+  if (String(userId) === String(receiver._id)) {
+    setIsReceiverOnline(false);
+    setIsReceiverTyping(false);
+  }
+};
+
+const handleOnlineUsers = (users) => {
+  const online = users.map(String);
+  if (online.includes(String(receiver._id))) {
+    setIsReceiverOnline(true);
+  }
+};
 
     socket.on("receiveMessage", handleReceive);
     socket.on("typing", handleTyping);
     socket.on("userOnline", handleUserOnline);
     socket.on("userOffline", handleUserOffline);
-
-    // Query: small ping to check if receiver is online (server doesn't expose one — rely on userOnline events)
-    // Optionally: you could hit an endpoint to check presence.
+    socket.on("onlineUsers", handleOnlineUsers);
 
     return () => {
       socket.off("receiveMessage", handleReceive);
       socket.off("typing", handleTyping);
       socket.off("userOnline", handleUserOnline);
       socket.off("userOffline", handleUserOffline);
+      socket.off("onlineUsers", handleOnlineUsers);
       if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
     };
   }, [socket, receiver, user._id]);
 
-  // Fetch messages from backend
+  // Fetch chat messages
   const fetchMessages = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/messages/${receiver._id}`, {
@@ -91,7 +122,7 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
     }
   };
 
-  // Send new message
+  // Send message
   const sendMessage = () => {
     if (!text.trim()) return;
     const newMsg = {
@@ -100,7 +131,6 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
       receiverId: receiver._id,
       createdAt: new Date().toISOString(),
     };
-    // emit to server
     socket?.emit("sendMessage", {
       senderId: user._id,
       receiverId: receiver._id,
@@ -111,33 +141,28 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
     emitTyping(false);
   };
 
-  // Typing events (debounced)
+  // Emit typing events (debounced)
   const emitTyping = (isTyping) => {
     if (!socket) return;
     socket.emit("typing", { to: receiver._id, typing: Boolean(isTyping) });
   };
 
-  // Called on each keystroke
   const handleInputChange = (e) => {
     setText(e.target.value);
     emitTyping(true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      emitTyping(false);
-    }, 1000); // stop typing after 1s of inactivity
+    typingTimeoutRef.current = setTimeout(() => emitTyping(false), 1000);
   };
 
   return (
-    // responsive: full-screen on small viewports, floating window on larger ones
     <div
-      className={`fixed z-50 ${/* small-screen fullscreen */ ""} bottom-4 right-4`}
+      className="fixed bottom-4 right-4 z-50"
       style={{
-        // stack windows slightly if index provided
-        right: 16 + index * 320, // if index=0 stays at right:16; if multiple windows, stack left
+        right: 16 + index * 320,
         maxWidth: 420,
       }}
     >
-      <div className="w-[95vw] sm:w-80 md:w-96 lg:w-96 bg-white rounded-lg shadow-lg border flex flex-col max-h-[80vh]">
+      <div className="w-[95vw] sm:w-80 md:w-96 bg-white rounded-lg shadow-lg border flex flex-col max-h-[80vh] animate-fadeIn">
         {/* Header */}
         <div className="flex justify-between items-center bg-blue-600 text-white p-3 rounded-t-lg">
           <div>
@@ -151,38 +176,46 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
               <span>{isReceiverOnline ? "Online" : "Offline"}</span>
             </div>
             {isReceiverTyping && (
-              <div className="text-xs text-white/90 mt-1">typing...</div>
+              <div className="text-xs text-white/90 mt-1 animate-pulse">
+                typing...
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                emitTyping(false);
-                onClose();
-              }}
-              className="hover:text-gray-200"
-              title="Close"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              emitTyping(false);
+              onClose();
+            }}
+            className="hover:text-gray-200"
+            title="Close"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
           {messages.length === 0 && (
-            <p className="text-center text-gray-500 text-sm">Start a new conversation...</p>
+            <p className="text-center text-gray-500 text-sm">
+              Start a new conversation...
+            </p>
           )}
           {messages.map((m, i) => {
-            const isMine = m.sender?._id === user._id || m.sender === user._id || (m.sender && m.sender === user._id);
+            const isMine =
+              m.sender?._id === user._id ||
+              m.sender === user._id;
             return (
               <div
                 key={i}
-                className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
+                className={`flex flex-col ${
+                  isMine ? "items-end" : "items-start"
+                }`}
               >
                 <div
-                  className={`max-w-[85%] p-2 rounded-lg text-sm shadow-sm ${
-                    isMine ? "bg-blue-600 text-white rounded-br-none" : "bg-gray-200 text-gray-800 rounded-bl-none"
+                  className={`max-w-[85%] p-2 rounded-lg text-sm shadow-sm transition-all duration-200 ${
+                    isMine
+                      ? "bg-blue-600 text-white rounded-br-none"
+                      : "bg-gray-200 text-gray-800 rounded-bl-none"
                   }`}
                 >
                   <p className="font-semibold text-xs mb-1">
