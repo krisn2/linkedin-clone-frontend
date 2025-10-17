@@ -1,5 +1,5 @@
 import { createContext, useState, useEffect } from 'react';
-import {API_BASE_URL} from '../config'
+import { API_BASE_URL } from '../config';
 
 export const AuthContext = createContext(null);
 
@@ -9,24 +9,19 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (token) {
-      fetchCurrentUser();
-    } else {
-      setLoading(false);
-    }
+    if (token) fetchCurrentUser();
+    else setLoading(false);
   }, [token]);
 
   const fetchCurrentUser = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/users/me`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-      } else {
-        logout();
-      }
+      } else logout();
     } catch (err) {
       console.error('Error fetching user:', err);
       logout();
@@ -40,7 +35,7 @@ export const AuthProvider = ({ children }) => {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -50,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false, error: data.message || 'Login failed' };
-    } catch (err) {
+    } catch {
       return { success: false, error: 'Network error' };
     }
   };
@@ -60,7 +55,7 @@ export const AuthProvider = ({ children }) => {
       const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, password }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -70,29 +65,25 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       }
       return { success: false, error: data.message || 'Registration failed' };
-    } catch (err) {
+    } catch {
       return { success: false, error: 'Network error' };
     }
   };
 
   const logout = () => {
+    // 🟢 Disconnect socket cleanly
+    if (window.socketRef?.current) {
+      window.socketRef.current.emit('manualDisconnect');
+      window.socketRef.current.disconnect();
+      window.socketRef.current = null;
+    }
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        token, 
-        loading,
-        login, 
-        register, 
-        logout, 
-        fetchCurrentUser 
-      }}
-    >
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, fetchCurrentUser }}>
       {children}
     </AuthContext.Provider>
   );

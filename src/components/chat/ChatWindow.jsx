@@ -14,19 +14,7 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const stopTypingTimerRef = useRef(null);
-  const audioRef = useRef(null);
 
-  // Load sound effect once
-  useEffect(() => {
-    audioRef.current = new Audio("/notification.mp3"); // place file in /public
-  }, []);
-
-  // Fetch chat history
-  useEffect(() => {
-    if (receiver) fetchMessages();
-  }, [receiver]);
-
-  // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -36,16 +24,12 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
     if (!socket) return;
 
     const handleReceive = (msg) => {
-      // Only show if message belongs to this chat
       if (
         msg.sender === receiver._id ||
         msg.sender?._id === receiver._id ||
         msg.receiverId === user._id
       ) {
         setMessages((prev) => [...prev, msg]);
-
-        // play sound + toast
-        if (audioRef.current) audioRef.current.play().catch(() => {});
         toast.custom((t) => (
           <div
             className={`bg-white border shadow-lg rounded-lg p-3 flex items-center gap-3 transition-all duration-300 ${
@@ -68,30 +52,33 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
       if (String(from) === String(receiver._id)) {
         setIsReceiverTyping(Boolean(typing));
         if (typing) {
-          if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
-          stopTypingTimerRef.current = setTimeout(() => setIsReceiverTyping(false), 3000);
+          if (stopTypingTimerRef.current)
+            clearTimeout(stopTypingTimerRef.current);
+          stopTypingTimerRef.current = setTimeout(
+            () => setIsReceiverTyping(false),
+            3000
+          );
         }
       }
     };
 
-
     const handleUserOnline = ({ userId }) => {
-  if (String(userId) === String(receiver._id)) setIsReceiverOnline(true);
-};
+      if (String(userId) === String(receiver._id)) setIsReceiverOnline(true);
+    };
 
-const handleUserOffline = ({ userId }) => {
-  if (String(userId) === String(receiver._id)) {
-    setIsReceiverOnline(false);
-    setIsReceiverTyping(false);
-  }
-};
+    const handleUserOffline = ({ userId }) => {
+      if (String(userId) === String(receiver._id)) {
+        setIsReceiverOnline(false);
+        setIsReceiverTyping(false);
+      }
+    };
 
-const handleOnlineUsers = (users) => {
-  const online = users.map(String);
-  if (online.includes(String(receiver._id))) {
-    setIsReceiverOnline(true);
-  }
-};
+    const handleOnlineUsers = (users) => {
+      const online = users.map(String);
+      if (online.includes(String(receiver._id))) {
+        setIsReceiverOnline(true);
+      }
+    };
 
     socket.on("receiveMessage", handleReceive);
     socket.on("typing", handleTyping);
@@ -109,18 +96,26 @@ const handleOnlineUsers = (users) => {
     };
   }, [socket, receiver, user._id]);
 
-  // Fetch chat messages
+useEffect(() => {
+  if (!receiver?._id || !token) return;
+
   const fetchMessages = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/messages/${receiver._id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (!res.ok) throw new Error("Failed to fetch messages");
       const data = await res.json();
-      setMessages(data || []);
+      setMessages(data);
     } catch (err) {
-      console.error("Error fetching messages:", err);
+      console.error("❌ Error fetching messages:", err);
     }
   };
+
+  fetchMessages();
+}, [receiver, token]);
+
 
   // Send message
   const sendMessage = () => {
@@ -201,9 +196,7 @@ const handleOnlineUsers = (users) => {
             </p>
           )}
           {messages.map((m, i) => {
-            const isMine =
-              m.sender?._id === user._id ||
-              m.sender === user._id;
+            const isMine = m.sender?._id === user._id || m.sender === user._id;
             return (
               <div
                 key={i}
