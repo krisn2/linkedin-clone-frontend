@@ -4,12 +4,17 @@ import { useSocket } from "../../hooks/useSocket";
 import { API_BASE_URL } from "../../config";
 import toast from "react-hot-toast";
 
-export default function ChatWindow({ receiver, onClose, index = 0 }) {
+export default function ChatWindow({
+  receiver,
+  onClose,
+  index = 0,
+  initialIsOnline = false,
+}) {
   const { token, user } = useAuth();
   const socket = useSocket();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
-  const [isReceiverOnline, setIsReceiverOnline] = useState(false);
+  const [isReceiverOnline, setIsReceiverOnline] = useState(initialIsOnline);
   const [isReceiverTyping, setIsReceiverTyping] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -19,7 +24,6 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Socket event listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -62,60 +66,42 @@ export default function ChatWindow({ receiver, onClose, index = 0 }) {
       }
     };
 
-    const handleUserOnline = ({ userId }) => {
-      if (String(userId) === String(receiver._id)) setIsReceiverOnline(true);
-    };
-
-    const handleUserOffline = ({ userId }) => {
-      if (String(userId) === String(receiver._id)) {
-        setIsReceiverOnline(false);
-        setIsReceiverTyping(false);
-      }
-    };
-
-    const handleOnlineUsers = (users) => {
-      const online = users.map(String);
-      if (online.includes(String(receiver._id))) {
-        setIsReceiverOnline(true);
-      }
-    };
-
     socket.on("receiveMessage", handleReceive);
     socket.on("typing", handleTyping);
-    socket.on("userOnline", handleUserOnline);
-    socket.on("userOffline", handleUserOffline);
-    socket.on("onlineUsers", handleOnlineUsers);
 
     return () => {
       socket.off("receiveMessage", handleReceive);
       socket.off("typing", handleTyping);
-      socket.off("userOnline", handleUserOnline);
-      socket.off("userOffline", handleUserOffline);
-      socket.off("onlineUsers", handleOnlineUsers);
       if (stopTypingTimerRef.current) clearTimeout(stopTypingTimerRef.current);
     };
   }, [socket, receiver, user._id]);
 
-useEffect(() => {
-  if (!receiver?._id || !token) return;
+  useEffect(() => {
+    setIsReceiverOnline(initialIsOnline);
+  }, [initialIsOnline]);
 
-  const fetchMessages = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/messages/${receiver._id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+  useEffect(() => {
+    if (!receiver?._id || !token) return;
 
-      if (!res.ok) throw new Error("Failed to fetch messages");
-      const data = await res.json();
-      setMessages(data);
-    } catch (err) {
-      console.error("❌ Error fetching messages:", err);
-    }
-  };
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/api/messages/${receiver._id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
 
-  fetchMessages();
-}, [receiver, token]);
+        if (!res.ok) throw new Error("Failed to fetch messages");
+        const data = await res.json();
+        setMessages(data);
+      } catch (err) {
+        console.error("❌ Error fetching messages:", err);
+      }
+    };
 
+    fetchMessages();
+  }, [receiver, token]);
 
   // Send message
   const sendMessage = () => {

@@ -176,7 +176,9 @@ export default function Header() {
           <h3 className="font-semibold p-3 border-b text-gray-800">Messages</h3>
           <ul>
             {conversations.length === 0 ? (
-              <li className="p-3 text-gray-500 text-sm">No conversations yet</li>
+              <li className="p-3 text-gray-500 text-sm">
+                No conversations yet
+              </li>
             ) : (
               conversations.map((c) =>
                 c.participants
@@ -239,7 +241,11 @@ export default function Header() {
       {activeReceiver && (
         <ChatWindow
           receiver={activeReceiver}
+          index={conversations.findIndex((c) =>
+            c.participants.some((p) => p._id === activeReceiver._id)
+          )}
           onClose={() => setActiveReceiver(null)}
+          initialIsOnline={onlineSet.has(String(activeReceiver._id))}
         />
       )}
     </header>

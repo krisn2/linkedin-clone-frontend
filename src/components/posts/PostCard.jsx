@@ -194,14 +194,14 @@ export default function PostCard({ post, onUpdate }) {
               m.type === "image" ? (
                 <img
                   key={i}
-                  src={`${API_BASE_URL}/${m.url}`}
+                  src={`${API_BASE_URL}${m.url}`}
                   alt=""
                   className="rounded-lg w-full object-cover max-h-96"
                 />
               ) : (
                 <video
                   key={i}
-                  src={`${API_BASE_URL}/${m.url}`}
+                  src={`${API_BASE_URL}${m.url}`}
                   controls
                   className="rounded-lg w-full"
                 />
